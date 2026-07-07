@@ -176,6 +176,46 @@ def cmd_stats(args) -> int:
         svc.close()
 
 
+def cmd_create_user(args) -> int:
+    import getpass
+
+    from rag_builder.api.auth import create_user
+    from rag_builder.db.models import Role
+    from rag_builder.db.session import init_db, make_engine, session_scope
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    engine = make_engine(settings.app_db_path)
+    init_db(engine)
+    password = args.password or getpass.getpass("Mot de passe : ")
+    if not password:
+        print("Mot de passe requis.", file=sys.stderr)
+        return 1
+    role = Role.ADMIN if args.admin else (args.role or Role.USER)
+    try:
+        with session_scope(engine) as db:
+            user = create_user(db, args.username, password, role=role)
+            username, user_role = user.username, user.role  # avant fermeture de session
+        print(f"Utilisateur '{username}' créé (rôle {user_role}).")
+        return 0
+    except ValueError as exc:
+        print(f"Erreur : {exc}", file=sys.stderr)
+        return 1
+
+
+def cmd_serve(args) -> int:
+    import uvicorn
+
+    uvicorn.run(
+        "rag_builder.api.app:create_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+    )
+    return 0
+
+
 def cmd_delete_collection(args) -> int:
     svc = _svc()
     try:
@@ -242,6 +282,19 @@ def build_parser() -> argparse.ArgumentParser:
     dc.add_argument("name")
     dc.add_argument("--yes", action="store_true")
     dc.set_defaults(func=cmd_delete_collection)
+
+    cu = add("create-user", help="Crée un compte (API)")
+    cu.add_argument("username")
+    cu.add_argument("--password", default=None, help="Sinon demandé interactivement")
+    cu.add_argument("--admin", action="store_true")
+    cu.add_argument("--role", default=None)
+    cu.set_defaults(func=cmd_create_user)
+
+    sv = add("serve", help="Lance l'API HTTP (uvicorn)")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=8000)
+    sv.add_argument("--reload", action="store_true")
+    sv.set_defaults(func=cmd_serve)
     return p
 
 

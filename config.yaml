@@ -1,0 +1,149 @@
+# Configuration du RAG POC
+# Modifie ici sans toucher au code
+
+paths:
+  data_dir: "data"            # dossier avec les documents à ingérer
+  storage_dir: "storage"      # base vectorielle + caches
+
+models:
+  # Modèle d'embedding Gemini (3072 dims par défaut, matriochka possible)
+  embedding: "gemini-embedding-001"
+  embedding_dim: 1536         # réduction matriochka (1536 est un bon compromis qualité/coût)
+
+  # Modèle de génération pour les réponses
+  # Free tier : gemini-2.5-flash = 10 RPM, 250 RPD
+  # Passe à flash-lite si tu tapes la limite RPD : 15 RPM, 1000 RPD
+  generation: "gemini-2.5-flash"
+
+  # Modèle de vision pour les screenshots de mindmaps
+  # flash-lite a le meilleur quota RPD (1000) pour les mindmaps avec beaucoup d'images
+  vision: "gemini-2.5-flash-lite"
+
+  # Modèle pour le reranker (appelé à chaque query)
+  # flash-lite = 15 RPM, 1000 RPD, suffisant en qualité pour un rerank
+  reranker: "gemini-2.5-flash-lite"
+
+chunking:
+  # Taille cible d'un chunk en tokens (approximation : 1 token ~ 4 chars FR)
+  target_tokens: 500
+  # Overlap entre chunks consécutifs
+  overlap_tokens: 60
+  # Taille minimale d'un chunk pour éviter le bruit
+  min_chunk_chars: 100
+
+retrieval:
+  # Nombre de candidats à récupérer avant rerank
+  rerank_k: 20
+  # Nombre de chunks finaux à passer au LLM
+  top_k: 5
+  # Poids RRF pour la fusion (valeur standard)
+  rrf_k: 60
+  # Activer le reranker LLM (plus lent mais meilleure qualité)
+  use_reranker: true
+
+youtube:
+  # Langues préférées pour les transcripts (dans l'ordre)
+  preferred_languages: ["fr", "en"]
+  # Regrouper les segments par tranche de N secondes pour former les chunks
+  segment_group_seconds: 60
+
+mindmap:
+  # Décrire les images via Gemini Vision
+  describe_images: true
+  # Cache les descriptions d'images par hash (économise des appels)
+  cache_descriptions: true
+
+video:
+  # Activer la transcription des fichiers vidéo locaux (.mp4, .mov, .webm, etc.)
+  # Si désactivé, les fichiers vidéo sont ignorés.
+  enable: true
+  # Modèle Gemini utilisé pour la transcription.
+  # Free tier : gemini-2.5-flash = 10 RPM, 250 RPD (recommandé).
+  # gemini-2.5-pro donne une meilleure qualité mais seulement 100 RPD en free tier.
+  # Pour la plupart des tutos, flash donne déjà de très bons résultats.
+  model: "gemini-2.5-flash"
+  # Cache les transcriptions par empreinte du fichier (taille + mtime).
+  # Si tu remplaces le .mp4, la transcription sera refaite automatiquement.
+  cache_transcriptions: true
+  # Temps max d'attente pour que Gemini traite la vidéo uploadée (secondes).
+  # Une vidéo de 30min peut prendre quelques minutes à être préparée.
+  processing_timeout_seconds: 600
+
+# ---------------------------------------------------------------------------
+# Multimodal : extraction des images des documents
+# ---------------------------------------------------------------------------
+# Quand activé, les images embarquées dans les PDFs/MindMaps sont extraites
+# et stockées dans storage/images/<doc_id>/. Le markdown indexé contient des
+# références ![](rag-image://...) qui sont réécrites en URL HTTP par le
+# serveur MCP au moment de servir la réponse à OpenWebUI.
+#
+# Coût : chaque image inconnue déclenche un appel Gemini Vision pour la
+# décrire (cache par hash bytes — ré-ingestion = gratuit).
+images:
+  extract_pdf: true       # désactive si tu veux du PDF texte pur
+  extract_mindmap: true   # désactive si tu veux les mindmaps texte pur
+  extract_office: true    # extraction images dans .docx/.pptx/.xlsx (et .doc/.ppt/.xls via Word COM)
+
+embedding_batch:
+  # Nombre de textes à embedder en une requête
+  # Gemini accepte jusqu'à 250 par batch. Plus grand = moins de requêtes
+  # (important pour le free tier où chaque batch = 1 RPM / 1 RPD).
+  batch_size: 100
+
+# ---------------------------------------------------------------------------
+# Rate limiting (important pour le free tier Gemini)
+# ---------------------------------------------------------------------------
+# Les valeurs par défaut correspondent au free tier 2026 (légèrement sous les
+# vraies limites pour laisser du jeu). Modifie ici si :
+# - Tu passes en Tier 1 (150+ RPM, 1500+ RPD) : multiplie les valeurs par 15-30
+# - Ton projet a des quotas custom (visible dans Google AI Studio)
+#
+# Limites free tier connues :
+#   gemini-2.5-pro       : 5 RPM,  100 RPD
+#   gemini-2.5-flash     : 10 RPM, 250 RPD
+#   gemini-2.5-flash-lite: 15 RPM, 1000 RPD
+#   gemini-embedding-001 : ~5 RPM, ~1000 RPD (peut varier)
+#
+# Limites par tier officielles (vérifie sur https://ai.google.dev/gemini-api/docs/rate-limits)
+#
+# FREE TIER :
+#   gemini-2.5-pro       : 5 RPM,   100 RPD
+#   gemini-2.5-flash     : 10 RPM,  250 RPD
+#   gemini-2.5-flash-lite: 15 RPM,  1000 RPD
+#   gemini-embedding-001 : 5 RPM,   1000 RPD
+#
+# TIER 1 (post-paiement, billing activé sur ton projet GCP) :
+#   gemini-2.5-pro       : 150 RPM, 10000 RPD
+#   gemini-2.5-flash     : 1000 RPM, 10000 RPD
+#   gemini-2.5-flash-lite: 4000 RPM, illimité (pas de RPD)
+#   gemini-embedding-001 : 3000 RPM, illimité
+#
+# Mets rpd à 0 pour désactiver la limite RPD côté client (utile en Tier 1+).
+# On garde des valeurs un peu en dessous des limites pour avoir du jeu.
+rate_limits:
+  # ============= TIER 1 (à utiliser si billing activé sur ton projet) =============
+  "gemini-2.5-pro":
+    rpm: 140
+    rpd: 9500
+  "gemini-2.5-flash":
+    rpm: 900
+    rpd: 9500
+  "gemini-2.5-flash-lite":
+    rpm: 3500
+    rpd: 0           # 0 = pas de limite journalière
+  "gemini-embedding-001":
+    rpm: 2800
+    rpd: 0
+  # ============= FREE TIER (commenté — décommenter si tu es en free) =============
+  # "gemini-2.5-pro":
+  #   rpm: 4
+  #   rpd: 90
+  # "gemini-2.5-flash":
+  #   rpm: 9
+  #   rpd: 240
+  # "gemini-2.5-flash-lite":
+  #   rpm: 14
+  #   rpd: 950
+  # "gemini-embedding-001":
+  #   rpm: 5
+  #   rpd: 950

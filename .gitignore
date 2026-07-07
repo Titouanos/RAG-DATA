@@ -1,0 +1,54 @@
+# Secrets
+.env
+.webui_secret_key
+*.key
+
+# Venv
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Logs
+*.log
+
+# Données ingérées (jamais versionnées)
+data/*
+!data/.gitkeep
+
+# Storage : base vectorielle, DB, caches, images extraites, poids de modèles
+storage/*
+!storage/.gitkeep
+
+# Cache des modèles locaux (bge-m3, reranker) — pré-embarqués via volume/Docker, pas versionnés
+models_cache/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Documentation projet : on VERSIONNE les .md (ETAT_DES_LIEUX, PLAN, etc.),
+# mais pas les fichiers sources binaires déposés à côté.
+# (les règles *.pdf/*.docx ci-dessous ne visent que data/, cf. ancrage)
+/data/**/*.pdf
+/data/**/*.doc
+/data/**/*.docx
+/data/**/*.xls
+/data/**/*.xlsx
+/data/**/*.ppt
+/data/**/*.pptx
+/data/**/*.mmap

@@ -1,0 +1,36 @@
+# Google Gemini (nouveau SDK unifié)
+google-genai>=0.3.0
+
+# Base vectorielle embarquée
+chromadb>=0.5.0
+
+# Conversion documents vers markdown
+markitdown[all]>=0.0.1a3
+
+# Extraction texte + images des PDF
+pymupdf>=1.24.0
+
+# BM25 pour la recherche lexicale
+rank-bm25>=0.2.2
+
+# YouTube transcripts
+youtube-transcript-api>=0.6.2
+
+# Parsing XML (mindmaps)
+lxml>=5.0.0
+
+# Serveur MCP pour brancher OpenWebUI / autres clients
+mcp>=1.0.0
+
+# Serveur HTTP statique pour servir les images
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
+# Utilitaires
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+tqdm>=4.66.0
+
+# Conversion des vieux formats Office (.doc, .xls, .ppt) — Windows uniquement.
+# Non installé sur Linux/Mac : ce converter sera désactivé silencieusement.
+pywin32>=306; sys_platform == "win32"

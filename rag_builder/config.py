@@ -50,13 +50,14 @@ class Settings(BaseSettings):
     hf_offline: bool = Field(default=False)
 
     # --- Reranking ---
-    # Désactivé par défaut : bge-reranker-v2-m3 (568M) sur CPU met ~15 s pour 20 candidats,
-    # très au-delà du budget de 800 ms (mesures Phase 1). Activable par collection.
-    rerank_enabled: bool = Field(default=False)
-    rerank_model: str = Field(default="BAAI/bge-reranker-v2-m3")
+    # Défaut : cross-encoder ONNX multilingue rapide sur CPU (tient < 800 ms). bge-reranker-v2-m3
+    # (option qualité) est trop lent sur CPU (~15 s/20 cand.) → à réserver au GPU / batch.
+    rerank_enabled: bool = Field(default=True)
+    rerank_model: str = Field(default="jinaai/jina-reranker-v2-base-multilingual")
 
     # --- Retrieval ---
-    rerank_k: int = Field(default=20)  # candidats récupérés avant rerank
+    # 10 candidats (pas 20) : garde le rerank ONNX CPU sous ~800 ms (mesures Phase 1).
+    rerank_k: int = Field(default=10)  # candidats récupérés avant rerank
     top_k: int = Field(default=5)  # chunks finaux passés au LLM
     rrf_k: int = Field(default=60)  # constante de la fusion RRF
 

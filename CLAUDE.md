@@ -98,8 +98,11 @@ streamée (LLMProvider) avec citations `[n]`.
   Modèle **figé par collection** à la création (en changer = réindexation complète).
 - **transformers pinné `<5`** : la 5.x casse `FlagReranker`
   (`XLMRobertaTokenizer.prepare_for_model`).
-- **Reranking : `bge-reranker-v2-m3`**, mais **désactivé par défaut** — mesuré à ~15 s pour
-  20 candidats sur ce CPU (budget 800 ms). Activable par collection. Voir « Latences ».
+- **Reranking : cross-encoder ONNX `jinaai/jina-reranker-v2-base-multilingual`** (via
+  fastembed), **activé par défaut**, multilingue, rapide sur CPU. Config : `rerank_k=10`
+  candidats + passages tronqués à 512 c. → **~645 ms** (< 800 ms). `bge-reranker-v2-m3`
+  reste disponible en **option qualité** (mais ~15 s/20 cand. sur CPU → réserver GPU/batch).
+  Backend déduit du nom de modèle.
 - **`doc_id` dérivé du nom de source** (pas du chemin absolu) → stable au déplacement.
 - **Génération : `LLMProvider` streaming**. Phase 1 : provider **gemini** (réutilise la clé
   existante). Défaut cible : **mistral** (`mistral-large-latest`), câblé en Phase 4.
@@ -114,13 +117,14 @@ streamée (LLMProvider) avec citations `[n]`.
 |---|---|---|
 | Recherche Qdrant hybride | **~5 ms** | ✅ très en dessous de 300 ms |
 | `embed_query` bge-m3 (dense+sparse) | **~300 ms** | plancher CPU de bge-m3 ; domine le retrieval |
-| Rerank bge-reranker-v2-m3 (20 cand.) | **~15 s** | ❌ ≫ 800 ms → **désactivé par défaut** |
+| Rerank ONNX jina-v2 (10 cand., 512 c.) | **~645 ms** | ✅ < 800 ms → **activé par défaut** |
+| Rerank bge-reranker-v2-m3 (20 cand.) | **~15 s** | option qualité, GPU/batch uniquement |
 | Chargement d'un modèle (cold) | ~8–10 s | payé une fois au démarrage d'un process long-vivant |
 
-→ Retrieval sans rerank ≈ **~310 ms** (dominé par l'embedding). Le CLI paie le chargement du
-modèle à chaque invocation ; l'API/worker (Phase 2) chargera les modèles une fois au boot
-(`warm_up`). **Question ouverte** : adopter un cross-encoder ONNX rapide (ex.
-`jina-reranker-v2-base-multilingual`) comme reranker par défaut pour tenir < 800 ms.
+→ Retrieval + rerank ONNX ≈ **~950 ms** chaud (embed 300 + search 5 + rerank 645). Le CLI paie
+le chargement des modèles à chaque invocation ; l'API/worker (Phase 2) les chargera une fois
+au boot (`warm_up`). Grille rerank (jina-v2, CPU) : n=20/2000c=4,7 s · n=10/1000c=1,3 s ·
+n=10/512c=0,65 s → défaut `rerank_k=10` + troncature 512 c.
 
 ## Hors scope v1 (pistes v2)
 

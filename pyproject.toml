@@ -14,12 +14,14 @@ license = { text = "Proprietary" }
 # via les extras ci-dessous.
 dependencies = [
     "qdrant-client>=1.12",
-    # bge-m3 (dense 1024 + sparse lexical) et bge-reranker-v2-m3 via la lib officielle BAAI.
-    # fastembed ne propose ni bge-m3 ni bge-reranker-v2-m3 (vérifié) → FlagEmbedding + torch CPU.
+    # bge-m3 (dense 1024 + sparse lexical) via la lib officielle BAAI ; fastembed ne propose
+    # pas bge-m3 (vérifié) → FlagEmbedding + torch CPU.
     "FlagEmbedding>=1.3",
     "torch>=2.2",
     # transformers 5.x casse FlagReranker (XLMRobertaTokenizer.prepare_for_model) → pin < 5.
     "transformers>=4.44,<5",
+    # Reranker cross-encoder ONNX (jina-reranker-v2-base-multilingual), rapide sur CPU.
+    "fastembed>=0.5",
     "pymupdf>=1.24",
     "markitdown[all]>=0.1",
     "lxml>=5",

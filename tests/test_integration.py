@@ -106,3 +106,34 @@ def test_reindex_on_content_change(service: RagService, tmp_path):
     r2 = svc.ingest_document("kb", f)
     assert r2.status == "updated"
     assert r2.doc_id == r1.doc_id  # même source → même doc_id (stable)
+
+
+def test_onnx_rerank_path(tmp_path):
+    """Le reranker ONNX par défaut réordonne et reste dans le pipeline (rerank_ms > 0)."""
+    settings = Settings(
+        storage_dir=tmp_path / "storage",
+        data_dir=tmp_path / "data",
+        models_cache_dir=ROOT / "storage" / "models_cache",
+        rerank_enabled=True,  # défaut : reranker ONNX jina-v2
+    )
+    settings.ensure_dirs()
+    svc = RagService.from_settings(settings)
+    try:
+        svc.create_collection("kb")
+        docs = {
+            "fsc.md": "# FSC\n\nPour reinitialiser le mot de passe FSC Teamcenter, ouvrir la "
+            "console FSC puis relancer le service et verifier le certificat PLM.",
+            "chats.md": "# Chats\n\nLe chat dort sur le canape au soleil toute la journee.",
+            "docker.md": "# Docker\n\nLancer la stack avec docker compose up en production.",
+        }
+        for name, content in docs.items():
+            p = tmp_path / "data" / name
+            p.write_text(content, encoding="utf-8")
+            assert svc.ingest_document("kb", p).status == "new"
+
+        res = svc.retrieve("kb", "comment reinitialiser le mot de passe FSC ?")
+        assert res.chunks
+        assert res.chunks[0].source_name == "fsc.md"
+        assert res.timings.rerank_ms > 0  # le rerank a bien tourné
+    finally:
+        svc.close()

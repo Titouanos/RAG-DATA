@@ -37,10 +37,10 @@ class CollectionMeta:
     dense_dim: int = 1024
     supports_sparse: bool = True
     # Réglages surchargeables
-    rerank_enabled: bool = False  # trop lent sur CPU (cf. mesures Phase 1) ; activable
-    rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    rerank_enabled: bool = True  # reranker ONNX rapide par défaut (cf. rerank_model)
+    rerank_model: str = "jinaai/jina-reranker-v2-base-multilingual"
     top_k: int = 5
-    rerank_k: int = 20
+    rerank_k: int = 10  # 10 candidats → rerank CPU sous ~800 ms
     llm_provider: str = "gemini"
     llm_model: str = "gemini-2.5-flash"
     system_prompt: str | None = None

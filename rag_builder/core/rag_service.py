@@ -21,7 +21,7 @@ from rag_builder.core.llm import build_provider
 from rag_builder.core.llm.prompts import DEFAULT_SYSTEM_PROMPT, build_user_prompt
 from rag_builder.core.models import EmbeddedChunk, QueryTimings, RetrievedChunk
 from rag_builder.core.registry import CollectionMeta, CollectionRegistry
-from rag_builder.core.rerank import LocalReranker
+from rag_builder.core.rerank import Reranker, build_reranker
 from rag_builder.core.store import QdrantStore
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class RagService:
             min_chunk_chars=settings.chunk_min_chars,
         )
         self._embedders: dict[str, Embedder] = {}
-        self._reranker: LocalReranker | None = None
+        self._rerankers: dict[str, Reranker] = {}
 
     # ------------------------------------------------------------------
     # Fabrique
@@ -110,14 +110,14 @@ class RagService:
             self._embedders[meta.embedder] = build_embedder(meta.embedder, self.settings)
         return self._embedders[meta.embedder]
 
-    def _get_reranker(self) -> LocalReranker:
-        if self._reranker is None:
-            self._reranker = LocalReranker(
+    def _get_reranker(self, meta: CollectionMeta) -> Reranker:
+        if meta.rerank_model not in self._rerankers:
+            self._rerankers[meta.rerank_model] = build_reranker(
+                meta.rerank_model,
                 cache_dir=self.settings.models_cache_dir,
                 offline=self.settings.hf_offline,
-                model_name=self.settings.rerank_model,
             )
-        return self._reranker
+        return self._rerankers[meta.rerank_model]
 
     # ------------------------------------------------------------------
     # Collections
@@ -259,7 +259,7 @@ class RagService:
 
         if meta.rerank_enabled and hits:
             t2 = time.perf_counter()
-            hits = self._get_reranker().rerank(question, hits, top_k=meta.top_k)
+            hits = self._get_reranker(meta).rerank(question, hits, top_k=meta.top_k)
             timings.rerank_ms = (time.perf_counter() - t2) * 1000
         else:
             hits = hits[: meta.top_k]

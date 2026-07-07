@@ -12,10 +12,9 @@ ajouter/retirer des documents **sans tout réindexer**.
 - **Génération** : interface multi-provider streamée (Gemini en Phase 1 ; Mistral par défaut
   cible, Anthropic/Ollama en option).
 
-> État : **Phase 1** (cœur multi-collections + CLI de validation). L'API web, le worker
-> asynchrone, le frontend et le packaging Docker arrivent aux phases suivantes — voir
-> [`docs/PLAN.md`](docs/PLAN.md). Le POC d'origine (`rag/`, `ingest.py`, `ask.py`,
-> `mcp_server.py`) reste présent jusqu'à la fin de la Phase 1.
+> État : **Phase 2** — cœur multi-collections + **API FastAPI** (REST + SSE) + **worker**
+> d'ingestion asynchrone + **SQLite** + **auth** comptes locaux. Le frontend et le packaging
+> Docker arrivent aux phases suivantes — voir [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Prérequis
 
@@ -60,6 +59,18 @@ python -m rag_builder delete --collection ma_doc --source fichier.pdf
 python -m rag_builder stats --collection ma_doc
 python -m rag_builder list-collections
 ```
+
+## API web (Phase 2)
+
+```bash
+pip install -e ".[gemini,api,dev]"
+python -m rag_builder create-user admin --admin      # 1er compte + crée storage/app.db
+python -m rag_builder serve --host 127.0.0.1 --port 8000
+```
+
+REST + SSE, auth par cookie de session (rôles admin/user), worker d'ingestion asynchrone
+avec progression, requête streamée (`sources` → `token*` → `done`). Parcours complet en
+`curl` : [`docs/API_SCENARIO.md`](docs/API_SCENARIO.md).
 
 ## Développement
 

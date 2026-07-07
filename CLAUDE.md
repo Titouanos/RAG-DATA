@@ -43,6 +43,12 @@ python -m rag_builder ask --collection NOM "question" [-v] [--no-generate]
 python -m rag_builder delete --collection NOM (--doc-id ID | --source NOM_FICHIER)
 python -m rag_builder stats --collection NOM
 python -m rag_builder delete-collection NOM --yes
+
+# API (Phase 2)
+pip install -e ".[gemini,api,dev]"
+python -m rag_builder create-user admin --admin      # premier compte (crée storage/app.db)
+python -m rag_builder serve --host 127.0.0.1 --port 8000   # API + worker
+# Scénario complet en curl : docs/API_SCENARIO.md
 ```
 
 ## Conventions
@@ -76,9 +82,26 @@ rag_builder/
     ├── rerank.py        # LocalReranker (bge-reranker-v2-m3, cross-encoder CPU)
     ├── llm/             # LLMProvider (streaming) : gemini ; prompts (honnêteté + anti-injection)
     └── rag_service.py   # orchestration ingest / retrieve / stream_answer / delete
-storage/                 # qdrant/ (local), collections.json, images/, models_cache/
-tests/                   # unitaires (rapides) + intégration (slow, bge-m3)
+├── db/                  # SQLModel : users, collections, documents, jobs, feedback, settings
+│   ├── models.py        # tables ; session.py (moteur SQLite WAL) ; sql_registry.py (registre SQL)
+├── worker/              # IngestionWorker (thread) : jobs → ingestion + progression
+└── api/                 # FastAPI
+    ├── app.py           # create_app + lifespan (init_db, warm-up, worker)
+    ├── auth.py          # argon2 + sessions serveur (cookie httpOnly)
+    ├── deps.py          # current_user / require_admin / require_collection_manager
+    ├── schemas.py       # DTO Pydantic
+    └── routers/         # health, auth, collections, documents, jobs, query (SSE), images
+storage/                 # qdrant/ (local), app.db (SQLite WAL), uploads/, images/, models_cache/
+tests/                   # unitaires (rapides) + intégration cœur & API (slow, bge-m3)
 ```
+
+**API (Phase 2)** : REST + SSE, servie par FastAPI. Auth = comptes locaux (argon2, sessions
+cookie httpOnly, rôles admin/user). L'**upload** crée un `job` persité ; un **worker** (thread
+lancé avec l'API, modèles chauds partagés) le traite (parsing → embedding par lots → upsert)
+avec **progression** par étape exposée via `/jobs/{id}`. La **requête** `POST
+/collections/{id}/query` renvoie un flux **SSE** : event `sources` → `token`* → `done`.
+Concurrence (Qdrant local + modèles non thread-safe) sérialisée par un verrou à grain fin
+dans `RagService` (verrou par lot d'embedding → les requêtes s'intercalent).
 
 Flux **ingestion** : source → converter → `ConvertedDoc` (markdown) → chunker → embeddings
 bge-m3 (dense+sparse) → upsert Qdrant. Incrémental par `content_hash` ; ré-ingestion =
@@ -138,6 +161,8 @@ riche d'images OOXML, OCR (Phase 4).
 - **Phase 0** ✅ — reconnaissance, `docs/ETAT_DES_LIEUX.md`, `docs/PLAN.md`.
 - **Phase 1** ✅ (en cours de clôture) — cœur multi-collections : Qdrant hybride, bge-m3
   local, suppression par `doc_id`, converters portés, CLI, tests (28 verts), latences mesurées.
-- **Phase 2** ⏳ — API FastAPI + worker + SQLite + jobs + SSE + auth.
+- **Phase 2** ✅ (en cours de clôture) — API FastAPI + worker asynchrone (jobs + progression)
+  + SQLite (WAL, SQLModel) + query SSE streaming + auth comptes locaux (argon2, rôles).
+  Scénario DoD en curl : `docs/API_SCENARIO.md`. 36 tests verts.
 - **Phase 3** ⏳ — frontend React.
 - **Phase 4** ⏳ — providers (mistral/anthropic/ollama), éval, docker-compose, MCP.

@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-builder"
+version = "0.1.0"
+description = "RAG Builder — plateforme de RAG multi-collections (Qdrant hybride, embeddings locaux bge-m3)"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "Proprietary" }
+
+# Dépendances du cœur (Phase 1). API/worker/providers cloud arrivent en Phase 2/4
+# via les extras ci-dessous.
+dependencies = [
+    "qdrant-client>=1.12",
+    # bge-m3 (dense 1024 + sparse lexical) et bge-reranker-v2-m3 via la lib officielle BAAI.
+    # fastembed ne propose ni bge-m3 ni bge-reranker-v2-m3 (vérifié) → FlagEmbedding + torch CPU.
+    "FlagEmbedding>=1.3",
+    "torch>=2.2",
+    # transformers 5.x casse FlagReranker (XLMRobertaTokenizer.prepare_for_model) → pin < 5.
+    "transformers>=4.44,<5",
+    "pymupdf>=1.24",
+    "markitdown[all]>=0.1",
+    "lxml>=5",
+    "python-dotenv>=1",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+# Providers LLM (génération). Gemini est utilisé dès la Phase 1 pour le CLI `ask`
+# (réutilise la clé existante) ; mistral/anthropic/ollama arrivent en Phase 4.
+gemini = ["google-genai>=1.0"]
+mistral = ["mistralai>=1.0"]
+anthropic = ["anthropic>=0.39"]
+# API + worker + base de données (Phase 2)
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "sqlmodel>=0.0.22", "python-multipart>=0.0.9", "argon2-cffi>=23", "httpx>=0.27"]
+# Serveur MCP (Phase 4)
+mcp = ["mcp>=1.0"]
+# Outillage de dev
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+rag-builder = "rag_builder.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["rag_builder*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["rag_builder", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W", "C4", "SIM"]
+ignore = [
+    "B008",  # appel de fonction dans les valeurs par défaut (courant avec FastAPI Depends)
+    "SIM108",  # ternaire pas toujours plus lisible
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+# Les prompts sont de la prose : on ne force pas la longueur de ligne.
+"rag_builder/core/llm/prompts.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "slow: tests lents (chargement de modèles locaux, réseau)",
+]

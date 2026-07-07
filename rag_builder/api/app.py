@@ -12,6 +12,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from rag_builder.api.context import build_context
 from rag_builder.api.routers import (
@@ -23,7 +25,7 @@ from rag_builder.api.routers import (
     jobs,
     query,
 )
-from rag_builder.config import Settings, get_settings
+from rag_builder.config import ROOT_DIR, Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -64,4 +66,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(query.router)
     app.include_router(images.router)
+
+    # Front buildé servi en statique (prod). Enregistré APRÈS les routers API pour ne pas
+    # les masquer ; fallback SPA vers index.html pour les routes côté client.
+    dist = ROOT_DIR / "web" / "dist"
+    if dist.exists():
+        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa(full_path: str):
+            candidate = dist / full_path
+            if full_path and candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(dist / "index.html")
+
     return app

@@ -47,8 +47,13 @@ python -m rag_builder delete-collection NOM --yes
 # API (Phase 2)
 pip install -e ".[gemini,api,dev]"
 python -m rag_builder create-user admin --admin      # premier compte (crée storage/app.db)
-python -m rag_builder serve --host 127.0.0.1 --port 8000   # API + worker
+python -m rag_builder serve --host 127.0.0.1 --port 8000   # API + worker (+ front si buildé)
 # Scénario complet en curl : docs/API_SCENARIO.md
+
+# Frontend (Phase 3) — dans web/
+cd web && npm install
+npm run dev        # dev : Vite sur :5173, proxy /auth,/collections,/jobs,/health → :8000
+npm run build      # prod : génère web/dist/, servi en statique par `serve`
 ```
 
 ## Conventions
@@ -93,7 +98,20 @@ rag_builder/
     └── routers/         # health, auth, collections, documents, jobs, query (SSE), images
 storage/                 # qdrant/ (local), app.db (SQLite WAL), uploads/, images/, models_cache/
 tests/                   # unitaires (rapides) + intégration cœur & API (slow, bge-m3)
+
+web/                     # Frontend React + Vite + TS + Tailwind (Phase 3)
+├── src/api.ts           # client fetch (cookies) + types + streamQuery (SSE)
+├── src/auth.tsx         # contexte d'authentification
+├── src/App.tsx          # routing + layout + garde auth
+└── src/pages/           # Login, Collections, CollectionDetail, Chat, Settings
 ```
+
+**Frontend (Phase 3)** : 4 pages — **Collections** (liste/création avec presets/suppression),
+**Détail** (tableau documents, upload drag & drop, progression jobs en temps réel, delete,
+réindexer = re-upload), **Chat** (streaming SSE token par token, panneau sources cliquable,
+images `rag-image://`, feedback 👍/👎), **Paramètres** (provider/modèle LLM, top_k, rerank,
+prompt système ; embedding figé expliqué). En dev, Vite proxifie l'API (same-origin →
+cookies) ; en prod, FastAPI sert `web/dist/` (fallback SPA).
 
 **API (Phase 2)** : REST + SSE, servie par FastAPI. Auth = comptes locaux (argon2, sessions
 cookie httpOnly, rôles admin/user). L'**upload** crée un `job` persité ; un **worker** (thread
@@ -164,5 +182,7 @@ riche d'images OOXML, OCR (Phase 4).
 - **Phase 2** ✅ (en cours de clôture) — API FastAPI + worker asynchrone (jobs + progression)
   + SQLite (WAL, SQLModel) + query SSE streaming + auth comptes locaux (argon2, rôles).
   Scénario DoD en curl : `docs/API_SCENARIO.md`. 36 tests verts.
-- **Phase 3** ⏳ — frontend React.
+- **Phase 3** ✅ (en cours de clôture) — frontend React+Vite+TS+Tailwind : 4 pages, streaming
+  SSE visible, sources cliquables, jobs temps réel. Parcours complet à la souris validé
+  (login → collection → upload → chat streamé → paramètres) avec génération Gemini réelle.
 - **Phase 4** ⏳ — providers (mistral/anthropic/ollama), éval, docker-compose, MCP.

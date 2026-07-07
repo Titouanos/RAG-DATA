@@ -12,9 +12,9 @@ ajouter/retirer des documents **sans tout réindexer**.
 - **Génération** : interface multi-provider streamée (Gemini en Phase 1 ; Mistral par défaut
   cible, Anthropic/Ollama en option).
 
-> État : **Phase 2** — cœur multi-collections + **API FastAPI** (REST + SSE) + **worker**
-> d'ingestion asynchrone + **SQLite** + **auth** comptes locaux. Le frontend et le packaging
-> Docker arrivent aux phases suivantes — voir [`docs/PLAN.md`](docs/PLAN.md).
+> État : **Phase 3** — cœur multi-collections + **API FastAPI** (REST + SSE) + **worker**
+> asynchrone + **SQLite** + **auth** + **frontend React** (4 pages, chat streamé). Le packaging
+> Docker et l'évaluation arrivent en Phase 4 — voir [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Prérequis
 
@@ -71,6 +71,18 @@ python -m rag_builder serve --host 127.0.0.1 --port 8000
 REST + SSE, auth par cookie de session (rôles admin/user), worker d'ingestion asynchrone
 avec progression, requête streamée (`sources` → `token*` → `done`). Parcours complet en
 `curl` : [`docs/API_SCENARIO.md`](docs/API_SCENARIO.md).
+
+## Frontend (Phase 3)
+
+```bash
+cd web && npm install
+npm run dev          # dev : http://localhost:5173 (proxy API → :8000)
+# ou, en prod : `npm run build` puis `serve` sert web/dist/ à la racine de l'API
+```
+
+Quatre pages : Collections, Détail (upload drag & drop + jobs temps réel), Chat (streaming +
+sources cliquables + feedback), Paramètres. Créer un compte admin d'abord
+(`python -m rag_builder create-user admin --admin`).
 
 ## Développement
 

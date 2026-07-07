@@ -8,8 +8,9 @@ cache par instance de service.
 from __future__ import annotations
 
 import logging
+import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -36,6 +37,9 @@ class IngestResult:
     status: str  # new | updated | skipped | failed
     n_chunks: int = 0
     message: str = ""
+    content_hash: str = ""
+    doc_type: str = ""
+    scanned_suspect: bool = False
 
 
 @dataclass
@@ -85,18 +89,35 @@ class RagService:
         )
         self._embedders: dict[str, Embedder] = {}
         self._rerankers: dict[str, Reranker] = {}
+        # Sérialise l'accès à Qdrant local et à l'inférence des modèles (non garantis
+        # thread-safe). Grain fin : verrou pris par lot d'embedding et par appel Qdrant,
+        # pour que les requêtes puissent s'intercaler pendant une ingestion.
+        self._lock = threading.RLock()
 
     # ------------------------------------------------------------------
     # Fabrique
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> RagService:
+    def from_settings(cls, settings: Settings, registry=None) -> RagService:
+        """Construit le service. `registry` : injecte un registre (SQL en API) ;
+        par défaut, registre JSON (CLI Phase 1)."""
         settings.ensure_dirs()
-        registry = CollectionRegistry(settings.storage_dir / "collections.json")
+        if registry is None:
+            registry = CollectionRegistry(settings.storage_dir / "collections.json")
         store = QdrantStore.from_settings(settings)
         image_store = ImageStore(settings.images_dir)
         return cls(settings, registry, store, image_store)
+
+    def warm_up(self) -> None:
+        """Précharge l'embedder par défaut (démarrage du worker long-vivant)."""
+        with self._lock:
+            kind = self.settings.embedder
+            if kind not in self._embedders:
+                self._embedders[kind] = build_embedder(kind, self.settings)
+            embedder = self._embedders[kind]
+            if hasattr(embedder, "warm_up"):
+                embedder.warm_up()
 
     def close(self) -> None:
         self.store.close()
@@ -143,12 +164,14 @@ class RagService:
             llm_model=overrides.pop("llm_model", self.settings.llm_model),
             **overrides,
         )
-        self.store.ensure_collection(name, meta.dense_dim, with_sparse=meta.supports_sparse)
+        with self._lock:
+            self.store.ensure_collection(name, meta.dense_dim, with_sparse=meta.supports_sparse)
         logger.info("Collection créée : %s (embedding=%s)", name, meta.embedding_model)
         return meta
 
     def delete_collection(self, name: str) -> None:
-        self.store.delete_collection(name)
+        with self._lock:
+            self.store.delete_collection(name)
         self.image_store.remove_collection(name)
         self.registry.delete(name)
         logger.info("Collection supprimée : %s", name)
@@ -157,9 +180,29 @@ class RagService:
     # Ingestion
     # ------------------------------------------------------------------
 
-    def ingest_document(self, collection: str, source: Path) -> IngestResult:
-        """Ingère un document (convert → chunk → embed → upsert). Incrémental par hash."""
+    def ingest_document(
+        self,
+        collection: str,
+        source: Path,
+        *,
+        source_name: str | None = None,
+        progress: Callable[[str, int, int], None] | None = None,
+        embed_batch: int = 32,
+    ) -> IngestResult:
+        """Ingère un document (convert → chunk → embed → upsert). Incrémental par hash.
+
+        :param source_name: nom d'origine à utiliser pour le `doc_id` et l'affichage
+            (utile quand le fichier sur disque est un temporaire préfixé — cas de l'upload).
+        :param progress: callback optionnel `(stage, current, total)` pour le suivi
+            (`parsing`, `embedding`, `indexing`) exposé par le worker.
+        """
+
         from rag_builder.core.converters import build_default_registry
+        from rag_builder.core.converters.base import make_doc_id
+
+        def report(stage: str, cur: int, total: int) -> None:
+            if progress:
+                progress(stage, cur, total)
 
         meta = self.registry.require(collection)
         vision = self._build_vision_describer()
@@ -169,25 +212,33 @@ class RagService:
             vision_describer=vision,
             vision_cache_dir=self.settings.storage_dir / "image_cache",
         )
+        src = Path(source)
+        report("parsing", 0, 1)
         try:
-            converted = converters.convert(Path(source))
+            converted = converters.convert(src)
         except Exception as exc:  # noqa: BLE001 — un doc en échec ne casse pas le worker
             logger.exception("Conversion échouée : %s", source)
-            return IngestResult(
-                doc_id="", source_name=Path(source).name, status="failed", message=str(exc)
-            )
+            return IngestResult(doc_id="", source_name=src.name, status="failed", message=str(exc))
         if converted is None:
             return IngestResult(
                 doc_id="",
-                source_name=Path(source).name,
+                source_name=source_name or src.name,
                 status="failed",
                 message="format non supporté ou contenu vide",
             )
+        # Rebase sur le nom d'origine (le fichier disque peut être un temporaire préfixé).
+        if source_name:
+            converted.source_name = source_name
+            converted.doc_id = make_doc_id(source_name)
+        report("parsing", 1, 1)
 
         existing_hash = self.store.get_doc_hash(collection, converted.doc_id)
         if existing_hash == converted.content_hash:
             return IngestResult(
-                doc_id=converted.doc_id, source_name=converted.source_name, status="skipped"
+                doc_id=converted.doc_id,
+                source_name=converted.source_name,
+                status="skipped",
+                scanned_suspect=bool(converted.metadata.get("scanned_suspect")),
             )
 
         chunks = self.chunker.chunk(converted.markdown, doc_title=converted.title)
@@ -196,29 +247,40 @@ class RagService:
                 doc_id=converted.doc_id,
                 source_name=converted.source_name,
                 status="failed",
-                message="aucun chunk produit",
+                message="aucun chunk produit (document vide ?)",
+                scanned_suspect=bool(converted.metadata.get("scanned_suspect")),
             )
 
+        # Embedding par lots (verrou par lot → les requêtes peuvent s'intercaler).
         embedder = self._get_embedder(meta)
-        embeddings = embedder.embed_documents([c.text for c in chunks])
-        embedded = [
-            EmbeddedChunk(chunk=c, dense=e.dense, sparse=e.sparse)
-            for c, e in zip(chunks, embeddings, strict=True)
-        ]
+        total = len(chunks)
+        embedded: list[EmbeddedChunk] = []
+        report("embedding", 0, total)
+        for start in range(0, total, embed_batch):
+            batch = chunks[start : start + embed_batch]
+            with self._lock:
+                embs = embedder.embed_documents([c.text for c in batch])
+            embedded.extend(
+                EmbeddedChunk(chunk=c, dense=e.dense, sparse=e.sparse)
+                for c, e in zip(batch, embs, strict=True)
+            )
+            report("embedding", min(start + embed_batch, total), total)
 
+        report("indexing", 0, 1)
         is_update = existing_hash is not None
-        if is_update:
-            self.store.delete_by_doc_id(collection, converted.doc_id)
-            self.image_store.remove_doc(collection, converted.doc_id)
-
-        n = self.store.upsert_chunks(
-            collection,
-            doc_id=converted.doc_id,
-            source_name=converted.source_name,
-            doc_type=converted.doc_type,
-            embedded=embedded,
-            content_hash=converted.content_hash,
-        )
+        with self._lock:
+            if is_update:
+                self.store.delete_by_doc_id(collection, converted.doc_id)
+                self.image_store.remove_doc(collection, converted.doc_id)
+            n = self.store.upsert_chunks(
+                collection,
+                doc_id=converted.doc_id,
+                source_name=converted.source_name,
+                doc_type=converted.doc_type,
+                embedded=embedded,
+                content_hash=converted.content_hash,
+            )
+        report("indexing", 1, 1)
         status = "updated" if is_update else "new"
         logger.info("Ingéré %s (%s) : %d chunks [%s]", converted.source_name, collection, n, status)
         return IngestResult(
@@ -226,14 +288,18 @@ class RagService:
             source_name=converted.source_name,
             status=status,
             n_chunks=n,
+            content_hash=converted.content_hash,
+            doc_type=converted.doc_type,
+            scanned_suspect=bool(converted.metadata.get("scanned_suspect")),
         )
 
     def delete_document(self, collection: str, doc_id: str) -> int:
         """Supprime un document et ses images. Retourne le nb de chunks supprimés."""
         self.registry.require(collection)
-        n = self.store.count_doc(collection, doc_id)
-        self.store.delete_by_doc_id(collection, doc_id)
-        self.image_store.remove_doc(collection, doc_id)
+        with self._lock:
+            n = self.store.count_doc(collection, doc_id)
+            self.store.delete_by_doc_id(collection, doc_id)
+            self.image_store.remove_doc(collection, doc_id)
         logger.info("Document supprimé : %s (%d chunks) de %s", doc_id, n, collection)
         return n
 
@@ -247,22 +313,23 @@ class RagService:
         embedder = self._get_embedder(meta)
         timings = QueryTimings()
 
-        t0 = time.perf_counter()
-        q_emb = embedder.embed_query(question)
-        timings.embed_ms = (time.perf_counter() - t0) * 1000
+        with self._lock:
+            t0 = time.perf_counter()
+            q_emb = embedder.embed_query(question)
+            timings.embed_ms = (time.perf_counter() - t0) * 1000
 
-        t1 = time.perf_counter()
-        hits = self.store.search(
-            collection, q_emb, limit=meta.rerank_k, with_sparse=meta.supports_sparse
-        )
-        timings.search_ms = (time.perf_counter() - t1) * 1000
+            t1 = time.perf_counter()
+            hits = self.store.search(
+                collection, q_emb, limit=meta.rerank_k, with_sparse=meta.supports_sparse
+            )
+            timings.search_ms = (time.perf_counter() - t1) * 1000
 
-        if meta.rerank_enabled and hits:
-            t2 = time.perf_counter()
-            hits = self._get_reranker(meta).rerank(question, hits, top_k=meta.top_k)
-            timings.rerank_ms = (time.perf_counter() - t2) * 1000
-        else:
-            hits = hits[: meta.top_k]
+            if meta.rerank_enabled and hits:
+                t2 = time.perf_counter()
+                hits = self._get_reranker(meta).rerank(question, hits, top_k=meta.top_k)
+                timings.rerank_ms = (time.perf_counter() - t2) * 1000
+            else:
+                hits = hits[: meta.top_k]
 
         timings.total_ms = timings.embed_ms + timings.search_ms + timings.rerank_ms
         if self.settings.debug_timing:

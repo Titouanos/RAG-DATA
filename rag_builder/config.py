@@ -79,9 +79,25 @@ class Settings(BaseSettings):
     vision_enabled: bool = Field(default=False)
     vision_model: str = Field(default="gemini-2.5-flash-lite")
 
+    # --- API / auth ---
+    # Création/suppression de collections réservée aux admins (configurable).
+    collections_admin_only: bool = Field(default=True)
+    # Cookie de session marqué Secure (à activer derrière TLS en prod).
+    cookie_secure: bool = Field(default=False)
+    session_ttl_days: int = Field(default=7)
+    # Origines autorisées CORS (front en dev). "*" à éviter en prod.
+    cors_origins: str = Field(default="http://localhost:5173")
+    # Précharger les modèles au démarrage de l'API (désactivable en test).
+    warmup_on_start: bool = Field(default=True)
+
     # --- Divers ---
     max_upload_mb: int = Field(default=100)
     debug_timing: bool = Field(default=False)
+
+    @property
+    def uploads_dir(self) -> Path:
+        """Répertoire des fichiers uploadés en attente d'ingestion."""
+        return self.storage_dir / "uploads"
 
     @property
     def qdrant_path(self) -> Path:

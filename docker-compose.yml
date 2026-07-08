@@ -1,0 +1,75 @@
+name: rag-builder
+
+# Déploiement : `docker compose up -d`. Voir README (section Déploiement) et .env.docker.example.
+# Au runtime, le seul flux sortant est vers l'API du provider LLM (Mistral par défaut) —
+# les modèles locaux sont pré-téléchargés une fois par le service `models-init`.
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    restart: unless-stopped
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    # Pas d'exposition externe : accessible seulement via le réseau compose.
+
+  # Télécharge bge-m3 + reranker dans le volume `models` (une seule fois, seul accès HF).
+  models-init:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    entrypoint: ["python", "download_models.py"]
+    environment:
+      HF_HOME: /models
+      HF_OFFLINE: "false"
+    volumes:
+      - models:/models
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      QDRANT_MODE: server
+      QDRANT_URL: http://qdrant:6333
+      MODELS_CACHE_DIR: /models
+      HF_OFFLINE: "true"
+      STORAGE_DIR: /data/storage
+      DATA_DIR: /data/incoming
+      CORS_ORIGINS: ${PUBLIC_URL:-https://localhost}
+      # Bootstrap admin (idempotent) — à retirer après la première création.
+      RAGB_ADMIN_USER: ${RAGB_ADMIN_USER:-admin}
+      RAGB_ADMIN_PASSWORD: ${RAGB_ADMIN_PASSWORD:-}
+    volumes:
+      - models:/models:ro
+      - appdata:/data
+    depends_on:
+      qdrant:
+        condition: service_started
+      models-init:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-localhost}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  qdrant_storage:
+  models:
+  appdata:
+  caddy_data:
+  caddy_config:

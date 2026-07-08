@@ -1,0 +1,17 @@
+# Reverse proxy TLS devant l'API (qui sert aussi le front buildé).
+# - Domaine interne : `tls internal` génère un certificat auto-signé (CA Caddy).
+# - Domaine public : remplacez `tls internal` par `tls admin@exemple.fr` (ACME/Let's Encrypt).
+
+{$CADDY_DOMAIN:localhost} {
+	encode zstd gzip
+	tls internal
+
+	# SSE : pas de mise en tampon, timeouts longs pour le streaming des réponses.
+	reverse_proxy api:8000 {
+		flush_interval -1
+	}
+
+	request_body {
+		max_size 100MB
+	}
+}

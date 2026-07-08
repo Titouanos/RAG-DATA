@@ -54,6 +54,11 @@ python -m rag_builder serve --host 127.0.0.1 --port 8000   # API + worker (+ fro
 cd web && npm install
 npm run dev        # dev : Vite sur :5173, proxy /auth,/collections,/jobs,/health → :8000
 npm run build      # prod : génère web/dist/, servi en statique par `serve`
+
+# Éval, MCP, Docker (Phase 4)
+python eval/run_eval.py [--no-generate]        # recall@5, MRR, présence mots-clés → eval/report.json
+python -m rag_builder mcp [--transport stdio|streamable-http]
+docker compose up -d --build                   # déploiement complet (cf. docs/DEPLOYMENT.md)
 ```
 
 ## Conventions
@@ -185,4 +190,15 @@ riche d'images OOXML, OCR (Phase 4).
 - **Phase 3** ✅ (en cours de clôture) — frontend React+Vite+TS+Tailwind : 4 pages, streaming
   SSE visible, sources cliquables, jobs temps réel. Parcours complet à la souris validé
   (login → collection → upload → chat streamé → paramètres) avec génération Gemini réelle.
-- **Phase 4** ⏳ — providers (mistral/anthropic/ollama), éval, docker-compose, MCP.
+- **Phase 4** ✅ (en cours de clôture) — providers **mistral** (défaut cible) / anthropic /
+  ollama (+ gemini) avec retries ; **éval** `eval/run_eval.py` (recall@5, MRR, mots-clés) ;
+  **OCR** optionnel par collection (ocrmypdf/Tesseract) ; **MCP** `rag_query(collection,…)` ;
+  **Docker** (compose api+worker/qdrant/caddy, modèles pré-embarqués, sauvegarde). Voir
+  `docs/DEPLOYMENT.md`.
+
+## v2 (hors scope v1, pistes notées)
+
+SSO Entra ID (OIDC) · permissions fines par collection/utilisateur · connecteurs
+SharePoint/Drive · fine-tuning · agents multi-étapes · cache sémantique · > ~50 utilisateurs
+simultanés · migrations Alembic (aujourd'hui `create_all` au boot) · converters vidéo/YouTube
+· extraction riche d'images OOXML.

@@ -102,6 +102,18 @@ sont hors périmètre v1 (cf. `docs/PLAN.md`).
 
 ## Déploiement
 
-Le déploiement Docker complet (api + worker + Qdrant serveur + reverse proxy TLS + front
-buildé, modèles pré-embarqués, script de sauvegarde) est livré en **Phase 4**. En mode dev,
-Qdrant tourne en embarqué (aucun service à lancer).
+```bash
+cp .env.docker.example .env      # clé provider LLM, admin, domaine Caddy
+docker compose up -d --build     # api+worker, Qdrant, Caddy TLS, front ; modèles pré-embarqués
+```
+
+Au runtime, un **seul flux sortant** (API du provider LLM) : les modèles locaux sont
+pré-téléchargés une fois par `models-init`. Guide complet des deux modes (dev / Docker),
+sauvegarde et MCP : [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+## Évaluation & MCP
+
+```bash
+python eval/run_eval.py                       # recall@5, MRR, présence mots-clés (eval/golden.jsonl)
+python -m rag_builder mcp                      # serveur MCP : rag_query(collection, question)
+```

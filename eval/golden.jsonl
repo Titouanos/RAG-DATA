@@ -1,0 +1,3 @@
+{"question": "Comment réinitialiser le mot de passe FSC dans Teamcenter ?", "collection": "demo_it", "expected_doc": "fsc.pdf", "expected_keywords": ["console FSC", "certificat", "PLM"]}
+{"question": "Où consulter les logs en cas d'échec FSC ?", "collection": "demo_it", "expected_doc": "fsc.pdf", "expected_keywords": ["var/log/fsc", "logs"]}
+{"question": "Quelle est la procédure pour relancer l'application Teamcenter ?", "collection": "demo_it", "expected_doc": "fsc.pdf", "expected_keywords": ["arrêter", "service", "relancer"]}

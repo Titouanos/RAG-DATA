@@ -62,3 +62,4 @@ web/*.local
 .claude/
 
 web/*.tsbuildinfo
+eval/report.json

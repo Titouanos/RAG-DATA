@@ -203,6 +203,18 @@ def cmd_create_user(args) -> int:
         return 1
 
 
+def cmd_mcp(args) -> int:
+    from rag_builder.mcp.server import _build_service, build_mcp
+
+    service = _build_service(get_settings())
+    mcp = build_mcp(service, image_base_url=args.image_base_url)
+    if args.transport == "streamable-http":
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+    mcp.run(transport=args.transport)
+    return 0
+
+
 def cmd_serve(args) -> int:
     import uvicorn
 
@@ -295,6 +307,13 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--port", type=int, default=8000)
     sv.add_argument("--reload", action="store_true")
     sv.set_defaults(func=cmd_serve)
+
+    mc = add("mcp", help="Lance le serveur MCP")
+    mc.add_argument("--transport", choices=["stdio", "streamable-http"], default="stdio")
+    mc.add_argument("--host", default="127.0.0.1")
+    mc.add_argument("--port", type=int, default=8100)
+    mc.add_argument("--image-base-url", default=None)
+    mc.set_defaults(func=cmd_mcp)
     return p
 
 

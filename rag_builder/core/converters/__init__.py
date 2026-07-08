@@ -24,6 +24,7 @@ from rag_builder.core.converters.office_legacy import LibreOfficeConverter
 from rag_builder.core.converters.pdf import PdfConverter
 
 __all__ = [
+    "SUPPORTED_EXTENSIONS",
     "Converter",
     "ConverterRegistry",
     "LibreOfficeConverter",
@@ -35,6 +36,14 @@ __all__ = [
     "iter_sources",
     "make_doc_id",
 ]
+
+# Toutes les extensions ingérables par le registre par défaut (pour filtrer les archives,
+# valider les uploads, etc.).
+SUPPORTED_EXTENSIONS: set[str] = (
+    {".pdf", ".mmap"}
+    | {".doc", ".dot", ".xls", ".xlt", ".ppt", ".pot"}  # legacy via LibreOffice
+    | MarkitdownConverter.SUPPORTED_EXTS
+)
 
 
 def build_default_registry(

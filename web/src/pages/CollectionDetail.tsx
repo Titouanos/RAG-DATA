@@ -98,7 +98,9 @@ export default function CollectionDetail() {
           onChange={(e) => e.target.files && upload(e.target.files)}
         />
         {uploading ? "Envoi en cours…" : "Glissez des fichiers ici, ou cliquez pour parcourir"}
-        <div className="mt-1 text-xs text-slate-400">PDF, Office, HTML, MindManager — max 100 Mo</div>
+        <div className="mt-1 text-xs text-slate-400">
+          PDF, Office, HTML, MindManager — ou un ZIP (un document par fichier) — max 100 Mo
+        </div>
       </div>
 
       {/* Jobs en cours */}

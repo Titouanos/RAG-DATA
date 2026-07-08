@@ -117,11 +117,16 @@ class IngestionWorker(threading.Thread):
             collection, Path(file_path), source_name=source_name, progress=on_progress
         )
         self._record_result(job_id, collection, result)
-        # Nettoyage du fichier temporaire uploadé (et de son sous-dossier unique).
+        # Nettoyage du fichier temporaire uploadé, puis des dossiers parents devenus vides
+        # (arborescences extraites d'un ZIP), sans sortir du répertoire d'uploads.
+        uploads_root = self._service.settings.uploads_dir.resolve()
         with contextlib.suppress(OSError):
             p = Path(file_path)
             p.unlink()
-            p.parent.rmdir()
+            parent = p.parent.resolve()
+            while parent != uploads_root and parent.is_relative_to(uploads_root):
+                parent.rmdir()  # OSError (non vide) → on s'arrête via suppress
+                parent = parent.parent
 
     # ------------------------------------------------------------------
     # Mises à jour DB

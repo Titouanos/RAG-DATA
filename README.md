@@ -97,8 +97,9 @@ Conventions, architecture détaillée et décisions : [`CLAUDE.md`](CLAUDE.md).
 ## Formats supportés (v1)
 
 PDF (PyMuPDF), Office moderne `.docx/.pptx/.xlsx` et HTML/txt/md/csv (markitdown), Office
-legacy `.doc/.xls/.ppt` (LibreOffice headless), MindManager `.mmap`. Vidéo/YouTube et OCR
-sont hors périmètre v1 (cf. `docs/PLAN.md`).
+legacy `.doc/.xls/.ppt` (LibreOffice headless), MindManager `.mmap`, et **archives ZIP**
+(un document par fichier supporté — idéal pour un export de doc en HTML). OCR optionnel
+par collection ; vidéo/YouTube hors périmètre v1 (cf. `docs/PLAN.md`).
 
 ## Déploiement
 

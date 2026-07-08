@@ -99,10 +99,12 @@ def delete_collection(
         svc.registry.require(name)
     except CollectionError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    svc.delete_collection(name)
+    # Purger d'abord les lignes qui référencent la collection (FK documents.collection),
+    # puis la collection elle-même (Qdrant + images + registre).
     for doc in db.exec(select(Document).where(Document.collection == name)).all():
         db.delete(doc)
     for job in db.exec(select(Job).where(Job.collection == name)).all():
         db.delete(job)
     db.commit()
+    svc.delete_collection(name)
     return {"status": "deleted", "collection": name}

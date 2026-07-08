@@ -87,3 +87,26 @@ def test_collection_creation_admin_only_by_default(client):
     assert r.json()["name"] == "kb"
     # doublon
     assert client.post("/collections", json={"name": "kb"}).status_code == 409
+
+
+def test_delete_collection_with_documents(client):
+    """Régression : supprimer une collection NON vide (FK documents.collection)."""
+    from rag_builder.db.models import Document, Job
+
+    _login(client, "admin", "admin-pass")
+    assert client.post("/collections", json={"name": "full"}).status_code == 201
+    # Documents + jobs rattachés, insérés directement (pas besoin du worker/modèles).
+    engine = client.app.state.ctx.engine
+    with session_scope(engine) as db:
+        db.add(Document(collection="full", doc_id="d1", source_name="a.html",
+                        status="indexed", n_chunks=3))
+        db.add(Document(collection="full", doc_id="d2", source_name="b.html"))
+        db.add(Job(collection="full", source_name="a.html", doc_id="d1", status="succeeded"))
+    r = client.delete("/collections/full")
+    assert r.status_code == 200, r.text
+    assert client.get("/collections/full").status_code == 404
+    # Plus aucune ligne orpheline.
+    from sqlmodel import select
+    with session_scope(engine) as db:
+        assert db.exec(select(Document).where(Document.collection == "full")).all() == []
+        assert db.exec(select(Job).where(Job.collection == "full")).all() == []

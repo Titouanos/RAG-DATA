@@ -214,21 +214,27 @@ function SourceCard({ s }: { s: Source }) {
   );
 }
 
-// Rendu léger : remplace les images ![alt](rag-image://…) par des <img>, texte en pré-wrap.
+// Rendu léger : remplace les images ![alt](rag-image://… | http(s)://…) par des <img>.
+// Les images internes passent par l'API ; les URLs absolues (ex. serveur GLPI interne)
+// sont chargées par le navigateur et masquées si inaccessibles (non connecté, hors VPN).
 function RichText({ text, collection }: { text: string; collection: string }) {
-  const re = /!\[([^\]]*)\]\((rag-image:\/\/[^)]+)\)/g;
+  const re = /!\[([^\]]*)\]\((rag-image:\/\/[^)\s]+|https?:\/\/[^)\s]+)\)/g;
   const parts: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
   let key = 0;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push(<span key={key++}>{text.slice(last, m.index)}</span>);
+    const src = m[2].startsWith("rag-image://") ? api.imageUrl(collection, m[2]) : m[2];
     parts.push(
       <img
         key={key++}
-        src={api.imageUrl(collection, m[2])}
+        src={src}
         alt={m[1]}
         className="my-2 max-h-72 rounded border border-slate-200"
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = "none";
+        }}
       />,
     );
     last = m.index + m[0].length;

@@ -48,18 +48,21 @@ def test_relative_file_outside_roots_blocked(tmp_path):
     assert "rag-image://" not in out
 
 
-def test_server_urls_removed_alt_kept(tmp_path):
+def test_relative_server_urls_removed_alt_kept(tmp_path):
+    """Chemin serveur relatif (hôte inconnu) : balise retirée, alt informatif conservé."""
     rw, _ = _rewriter(tmp_path)
-    md = (
-        "Cliquer [![Remplacer en bas de page](/front/document.send.php?docid=1)]"
-        "(/front/document.send.php?docid=1) puis "
-        "![](https://glpi.example.com/front/document.send.php?docid=2)"
-    )
+    md = "Cliquer ![Remplacer en bas de page](/front/document.send.php?docid=1) puis valider."
     out = rw.rewrite(md, doc_id="d", base_dir=tmp_path)
-    assert "document.send.php?docid=1)](" not in out.split("]")[0]  # balise image retirée
-    assert "rag-image://" not in out
-    assert "Remplacer en bas de page" in out  # alt informatif conservé
-    # Le lien externe [texte](url) survit, seule la balise image interne est réécrite.
+    assert "![" not in out and "document.send.php" not in out
+    assert "Remplacer en bas de page" in out
+
+
+def test_absolute_urls_kept_for_browser(tmp_path):
+    """URL absolue (serveur GLPI interne) : conservée telle quelle, rendue par le front."""
+    rw, _ = _rewriter(tmp_path)
+    md = "![capture](https://glpi-info.saga.com/front/document.send.php?docid=2&items_id=5)"
+    out = rw.rewrite(md, doc_id="d", base_dir=tmp_path)
+    assert out == md  # inchangé
 
 
 def test_tiny_images_ignored(tmp_path):

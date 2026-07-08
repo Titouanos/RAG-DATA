@@ -8,9 +8,11 @@ façons ; après conversion markitdown, on réécrit chaque balise ``![alt](src)
   pollue les chunks et les embeddings.
 - **chemin relatif** (``images/capture.png``) : résolu à côté du fichier HTML (dans
   l'arborescence extraite du ZIP), stocké s'il existe — avec garde-fou de racine.
-- **URL absolue ou chemin serveur** (``https://…``, ``/front/document.send.php?…``) :
-  injoignable hors ligne → la balise est retirée (l'alt text est conservé s'il est
-  informatif). Évite les images cassées dans le chat.
+- **URL absolue** (``https://glpi…/front/document.send.php?…``) : conservée telle quelle —
+  le navigateur de l'utilisateur (réseau interne, session GLPI) peut la charger ; le front
+  masque l'image si elle est inaccessible.
+- **chemin serveur relatif** (``/front/…``) : hôte inconnu, injoignable → balise retirée
+  (l'alt text est conservé s'il est informatif).
 
 Si un ``vision_describer`` est fourni, chaque image stockée est décrite (description
 indexée, cache par hash — même format/cache que le converter PDF).
@@ -74,6 +76,9 @@ class HtmlImageRewriter:
         def repl(m: re.Match) -> str:
             nonlocal count
             alt, src = m.group(1), m.group(2)
+            # URL absolue : on garde la balise — le navigateur interne saura la charger.
+            if src.startswith(("http://", "https://")):
+                return m.group(0)
             img_bytes, ext = self._load_bytes(src, base_dir)
             if img_bytes is None:
                 # Injoignable (URL serveur, fichier absent…) : on garde l'alt informatif.
@@ -107,8 +112,8 @@ class HtmlImageRewriter:
                 return None, ""
             return data, _EXT_BY_FMT.get(m.group(1).lower(), ".png")
 
-        # URL absolue ou chemin serveur : injoignable hors ligne.
-        if src.startswith(("http://", "https://", "//", "/")):
+        # Chemin serveur relatif (hôte inconnu) ou protocole exotique : injoignable.
+        if src.startswith(("//", "/")) or ":" in src.split("/")[0]:
             return None, ""
 
         ext = Path(src).suffix.lower()

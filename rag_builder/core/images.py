@@ -101,6 +101,31 @@ class ImageStore:
             doc_dir.rmdir()
         return count
 
+    def rename_doc(self, collection: str, old_doc_id: str, new_doc_id: str) -> bool:
+        """Déplace les images d'un doc_id vers un autre (rebasage post-conversion).
+
+        Retourne True si des fichiers ont été déplacés.
+        """
+        _check_safe_id(collection, "collection")
+        _check_safe_id(old_doc_id, "doc_id")
+        _check_safe_id(new_doc_id, "doc_id")
+        old_dir = self.root_dir / collection / old_doc_id
+        if old_doc_id == new_doc_id or not old_dir.exists():
+            return False
+        new_dir = self.root_dir / collection / new_doc_id
+        new_dir.mkdir(parents=True, exist_ok=True)
+        moved = False
+        for f in old_dir.iterdir():
+            target = new_dir / f.name
+            if not target.exists():
+                f.rename(target)
+            else:
+                f.unlink()  # même contenu (nom = hash) déjà présent
+            moved = True
+        with contextlib.suppress(OSError):
+            old_dir.rmdir()
+        return moved
+
     def remove_collection(self, collection: str) -> None:
         """Supprime toutes les images d'une collection."""
         _check_safe_id(collection, "collection")

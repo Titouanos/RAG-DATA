@@ -198,7 +198,7 @@ class RagService:
         """
 
         from rag_builder.core.converters import build_default_registry
-        from rag_builder.core.converters.base import make_doc_id
+        from rag_builder.core.converters.base import hash_content, make_doc_id
 
         def report(stage: str, cur: int, total: int) -> None:
             if progress:
@@ -208,11 +208,14 @@ class RagService:
         vision = self._build_vision_describer()
         converters = build_default_registry(
             collection,
-            image_store=self.image_store if vision else None,
+            # L'ImageStore est toujours fourni : le HTML en profite même sans vision
+            # (data-URI/fichiers relatifs stockés) ; PDF/mindmap exigent vision en plus.
+            image_store=self.image_store,
             vision_describer=vision,
             vision_cache_dir=self.settings.storage_dir / "image_cache",
             ocr_enabled=getattr(meta, "ocr_enabled", False),
             ocr_languages=self.settings.ocr_languages,
+            image_roots=[self.settings.uploads_dir, self.settings.data_dir],
         )
         src = Path(source)
         report("parsing", 0, 1)
@@ -228,10 +231,21 @@ class RagService:
                 status="failed",
                 message="format non supporté ou contenu vide",
             )
-        # Rebase sur le nom d'origine (le fichier disque peut être un temporaire préfixé).
+        # Rebase sur le nom d'origine (le fichier disque peut être un temporaire, ou un
+        # fichier extrait d'un ZIP dont l'identité est le chemin relatif dans l'archive).
         if source_name:
+            old_doc_id = converted.doc_id
             converted.source_name = source_name
             converted.doc_id = make_doc_id(source_name)
+            if old_doc_id != converted.doc_id and self.image_store.rename_doc(
+                collection, old_doc_id, converted.doc_id
+            ):
+                # Les refs rag-image:// du markdown pointent encore vers l'ancien doc_id.
+                converted.markdown = converted.markdown.replace(
+                    f"rag-image://{collection}/{old_doc_id}/",
+                    f"rag-image://{collection}/{converted.doc_id}/",
+                )
+                converted.content_hash = hash_content(converted.markdown)
         report("parsing", 1, 1)
 
         existing_hash = self.store.get_doc_hash(collection, converted.doc_id)

@@ -43,11 +43,14 @@ def build_default_registry(
     image_store=None,
     vision_describer=None,
     vision_cache_dir: Path | None = None,
+    ocr_enabled: bool = False,
+    ocr_languages: str = "fra+eng",
 ) -> ConverterRegistry:
     """Construit le registre par défaut.
 
     Ordre : mindmap, pdf, office_legacy, markitdown (fallback). La vision (extraction
     d'images) n'est active que si ``image_store`` **et** ``vision_describer`` sont fournis.
+    L'OCR PDF (``ocr_enabled``) nécessite ocrmypdf + Tesseract.
     """
     # Cache LibreOffice : à côté du cache Vision si fourni, sinon dans le temp système.
     if vision_cache_dir is not None:
@@ -69,6 +72,8 @@ def build_default_registry(
             image_store=image_store,
             vision_describer=vision_describer,
             vision_cache_dir=vision_cache_dir,
+            ocr_enabled=ocr_enabled,
+            ocr_languages=ocr_languages,
         ),
         LibreOfficeConverter(office_cache_dir, markitdown),
         markitdown,

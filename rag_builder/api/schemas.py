@@ -33,6 +33,7 @@ class CreateCollectionRequest(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
     system_prompt: str | None = None
+    ocr_enabled: bool | None = None
 
 
 class UpdateCollectionRequest(BaseModel):
@@ -44,6 +45,7 @@ class UpdateCollectionRequest(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
     system_prompt: str | None = None
+    ocr_enabled: bool | None = None
 
 
 class CollectionOut(BaseModel):
@@ -60,6 +62,7 @@ class CollectionOut(BaseModel):
     llm_provider: str
     llm_model: str
     system_prompt: str | None
+    ocr_enabled: bool = False
     n_documents: int = 0
     n_chunks: int = 0
 

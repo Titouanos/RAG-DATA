@@ -41,9 +41,10 @@ class CollectionMeta:
     rerank_model: str = "jinaai/jina-reranker-v2-base-multilingual"
     top_k: int = 5
     rerank_k: int = 10  # 10 candidats → rerank CPU sous ~800 ms
-    llm_provider: str = "gemini"
-    llm_model: str = "gemini-2.5-flash"
+    llm_provider: str = "mistral"
+    llm_model: str = "mistral-large-latest"
     system_prompt: str | None = None
+    ocr_enabled: bool = False
     created_at: str = ""
 
     @classmethod

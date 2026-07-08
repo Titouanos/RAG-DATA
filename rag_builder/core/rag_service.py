@@ -211,6 +211,8 @@ class RagService:
             image_store=self.image_store if vision else None,
             vision_describer=vision,
             vision_cache_dir=self.settings.storage_dir / "image_cache",
+            ocr_enabled=getattr(meta, "ocr_enabled", False),
+            ocr_languages=self.settings.ocr_languages,
         )
         src = Path(source)
         report("parsing", 0, 1)

@@ -38,6 +38,7 @@ export default function Settings() {
         rerank_enabled: form.rerank_enabled,
         rerank_model: form.rerank_model,
         system_prompt: form.system_prompt || null,
+        ocr_enabled: form.ocr_enabled,
       });
       setCol(updated);
       setForm(updated);
@@ -138,6 +139,22 @@ export default function Settings() {
               onChange={(e) => set({ rerank_model: e.target.value })}
             />
           </Field>
+        </section>
+
+        <section className="card space-y-2 p-4">
+          <h2 className="font-semibold">OCR (PDF scannés)</h2>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={!!form.ocr_enabled}
+              onChange={(e) => set({ ocr_enabled: e.target.checked })}
+            />
+            Activer l'OCR (fra+eng) pour les PDF sans couche texte
+          </label>
+          <p className="text-xs text-slate-400">
+            Nécessite ocrmypdf + Tesseract côté serveur. Suggéré quand un document affiche
+            « pages sans texte détectées ».
+          </p>
         </section>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

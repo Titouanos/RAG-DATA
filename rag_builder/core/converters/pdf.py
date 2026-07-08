@@ -16,6 +16,9 @@ import hashlib
 import json
 import logging
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 from rag_builder.core.converters._image_md import (
@@ -59,11 +62,15 @@ class PdfConverter:
         image_store=None,
         vision_describer=None,
         vision_cache_dir: Path | None = None,
+        ocr_enabled: bool = False,
+        ocr_languages: str = "fra+eng",
     ):
         self.collection = collection
         self.image_store = image_store
         self.vision_describer = vision_describer
         self.vision_cache_dir = vision_cache_dir
+        self.ocr_enabled = ocr_enabled
+        self.ocr_languages = ocr_languages
         # L'extraction d'images exige à la fois le stockage et la vision.
         self.enable_images = image_store is not None and vision_describer is not None
 
@@ -92,20 +99,27 @@ class PdfConverter:
         if meta_title and self._title_looks_legit(meta_title, path.stem):
             title = meta_title
 
-        markdown_parts: list[str] = [f"# {title}", ""]
-        page_count = getattr(pdf, "page_count", None)
-        empty_text_pages: list[int] = []
-
         try:
-            for page_num, page in enumerate(pdf, start=1):
-                has_text, page_md = self._convert_page(page, page_num, doc_id)
-                if not has_text:
-                    empty_text_pages.append(page_num)
-                if page_md.strip():
-                    markdown_parts.append(page_md)
-                    markdown_parts.append("")
+            markdown_parts, empty_text_pages, page_count = self._extract_all(pdf, doc_id, title)
         finally:
             pdf.close()
+
+        ocr_applied = False
+        # OCR optionnel : si activé et des pages sans texte sont détectées, on ré-océrise.
+        if self.ocr_enabled and empty_text_pages:
+            ocr_path = self._run_ocr(path)
+            if ocr_path is not None:
+                try:
+                    pdf2 = fitz.open(str(ocr_path))
+                    try:
+                        markdown_parts, empty_text_pages, page_count = self._extract_all(
+                            pdf2, doc_id, title
+                        )
+                        ocr_applied = True
+                    finally:
+                        pdf2.close()
+                finally:
+                    ocr_path.unlink(missing_ok=True)
 
         markdown = "\n".join(markdown_parts).strip()
         if not markdown:
@@ -117,6 +131,8 @@ class PdfConverter:
             "filepath": str(path),
             "pages": page_count,
         }
+        if ocr_applied:
+            metadata["ocr_applied"] = True
         if empty_text_pages:
             metadata["empty_text_pages"] = empty_text_pages
             if page_count and len(empty_text_pages) / page_count > _SCANNED_SUSPECT_RATIO:
@@ -131,6 +147,44 @@ class PdfConverter:
             doc_type="pdf",
             metadata=metadata,
         )
+
+    def _extract_all(self, pdf, doc_id: str, title: str) -> tuple[list[str], list[int], int | None]:
+        """Extrait le markdown page par page. Retourne (parts, pages_sans_texte, nb_pages)."""
+        markdown_parts: list[str] = [f"# {title}", ""]
+        page_count = getattr(pdf, "page_count", None)
+        empty_text_pages: list[int] = []
+        for page_num, page in enumerate(pdf, start=1):
+            has_text, page_md = self._convert_page(page, page_num, doc_id)
+            if not has_text:
+                empty_text_pages.append(page_num)
+            if page_md.strip():
+                markdown_parts.append(page_md)
+                markdown_parts.append("")
+        return markdown_parts, empty_text_pages, page_count
+
+    def _run_ocr(self, source: Path) -> Path | None:
+        """Ajoute une couche texte via ocrmypdf (Tesseract). None si indisponible/échec."""
+        if not shutil.which("ocrmypdf"):
+            logger.warning(
+                "OCR demandé mais 'ocrmypdf' est absent du PATH — %s laissé tel quel.",
+                source.name,
+            )
+            return None
+        out = Path(tempfile.mkdtemp(prefix="ragb_ocr_")) / f"ocr_{source.name}"
+        try:
+            subprocess.run(
+                ["ocrmypdf", "--skip-text", "--language", self.ocr_languages,
+                 str(source), str(out)],
+                check=True,
+                capture_output=True,
+                timeout=600,
+            )
+            logger.info("OCR appliqué à %s (%s)", source.name, self.ocr_languages)
+            return out
+        except Exception as exc:  # noqa: BLE001 — l'OCR ne doit jamais casser l'ingestion
+            logger.warning("OCR échoué sur %s : %s", source.name, exc)
+            out.unlink(missing_ok=True)
+            return None
 
     @staticmethod
     def _title_looks_legit(meta_title: str, filename_stem: str) -> bool:

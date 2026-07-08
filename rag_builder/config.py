@@ -67,9 +67,10 @@ class Settings(BaseSettings):
     chunk_min_chars: int = Field(default=100)
 
     # --- Génération (LLM) ---
-    # gemini (défaut Phase 1, réutilise la clé existante) | mistral | anthropic | ollama
-    llm_provider: str = Field(default="gemini")
-    llm_model: str = Field(default="gemini-2.5-flash")
+    # Défaut cible : mistral (EU). Surchargé par LLM_PROVIDER/LLM_MODEL (env) — en dev on
+    # met souvent gemini dans .env. Options : mistral | gemini | anthropic | ollama.
+    llm_provider: str = Field(default="mistral")
+    llm_model: str = Field(default="mistral-large-latest")
     gemini_api_key: str | None = Field(default=None)
     mistral_api_key: str | None = Field(default=None)
     anthropic_api_key: str | None = Field(default=None)
@@ -78,6 +79,9 @@ class Settings(BaseSettings):
     # --- Vision (description d'images, optionnel) ---
     vision_enabled: bool = Field(default=False)
     vision_model: str = Field(default="gemini-2.5-flash-lite")
+
+    # --- OCR (optionnel, activé par collection ; nécessite ocrmypdf + Tesseract) ---
+    ocr_languages: str = Field(default="fra+eng")
 
     # --- API / auth ---
     # Création/suppression de collections réservée aux admins (configurable).

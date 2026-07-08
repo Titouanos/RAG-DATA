@@ -20,6 +20,7 @@ export interface Collection {
   llm_provider: string;
   llm_model: string;
   system_prompt: string | null;
+  ocr_enabled: boolean;
   n_documents: number;
   n_chunks: number;
 }

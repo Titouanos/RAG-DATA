@@ -73,9 +73,10 @@ class Collection(SQLModel, table=True):
     rerank_model: str = Field(default="jinaai/jina-reranker-v2-base-multilingual")
     top_k: int = Field(default=5)
     rerank_k: int = Field(default=10)
-    llm_provider: str = Field(default="gemini")
-    llm_model: str = Field(default="gemini-2.5-flash")
+    llm_provider: str = Field(default="mistral")
+    llm_model: str = Field(default="mistral-large-latest")
     system_prompt: str | None = Field(default=None)
+    ocr_enabled: bool = Field(default=False)
     created_at: datetime = Field(default_factory=_now)
     created_by: int | None = Field(default=None, foreign_key="users.id")
 

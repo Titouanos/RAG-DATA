@@ -50,8 +50,12 @@ class GlpiImageFetcher:
         self._timeout = timeout
         self._client = None
         self._session_token: str | None = None
+        self._api_base: str | None = None  # déterminé à l'initSession (v10 vs v11)
         self._lock = threading.Lock()
         self._failed_init = False
+
+    # Chemins possibles de l'API legacy : GLPI ≤10 (apirest.php) et GLPI 11 (api.php/v1).
+    _API_PATHS = ("/apirest.php", "/api.php/v1")
 
     # ------------------------------------------------------------------
 
@@ -69,7 +73,7 @@ class GlpiImageFetcher:
             return None, ""
         try:
             resp = client.get(
-                f"{self.base}/apirest.php/Document/{docid}",
+                f"{self._api_base}/Document/{docid}",
                 headers={
                     "Session-Token": self._session_token or "",
                     "App-Token": self._app_token,
@@ -94,10 +98,10 @@ class GlpiImageFetcher:
             return None, ""
 
     def close(self) -> None:
-        if self._client is not None and self._session_token:
+        if self._client is not None and self._session_token and self._api_base:
             with contextlib.suppress(Exception):
                 self._client.get(
-                    f"{self.base}/apirest.php/killSession",
+                    f"{self._api_base}/killSession",
                     headers={
                         "Session-Token": self._session_token,
                         "App-Token": self._app_token,
@@ -110,37 +114,52 @@ class GlpiImageFetcher:
     # ------------------------------------------------------------------
 
     def _ensure_session(self):
-        """Ouvre la session REST GLPI (une fois). Retourne le client httpx ou None."""
+        """Ouvre la session REST GLPI (une fois). Retourne le client httpx ou None.
+
+        Essaie les deux chemins de l'API legacy : ``/apirest.php`` (GLPI ≤ 10) puis
+        ``/api.php/v1`` (GLPI 11+) — le premier qui répond gagne.
+        """
         if self._failed_init:
             return None
         with self._lock:
             if self._client is not None and self._session_token:
                 return self._client
-            try:
-                import httpx
+            import httpx
 
-                client = httpx.Client(verify=self._verify, timeout=self._timeout)
-                resp = client.get(
-                    f"{self.base}/apirest.php/initSession",
-                    headers={
-                        "App-Token": self._app_token,
-                        "Authorization": f"user_token {self._user_token}",
-                    },
-                )
-                resp.raise_for_status()
-                self._session_token = resp.json().get("session_token")
-                if not self._session_token:
-                    raise RuntimeError("initSession sans session_token")
-                self._client = client
-                logger.info("GLPI : session API ouverte sur %s", self.base)
-                return self._client
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "GLPI : impossible d'ouvrir la session API (%s) — les images GLPI "
-                    "resteront des liens.", exc,
-                )
-                self._failed_init = True
-                return None
+            client = httpx.Client(verify=self._verify, timeout=self._timeout)
+            errors: list[str] = []
+            for path in self._API_PATHS:
+                api_base = f"{self.base}{path}"
+                try:
+                    resp = client.get(
+                        f"{api_base}/initSession",
+                        headers={
+                            "App-Token": self._app_token,
+                            "Authorization": f"user_token {self._user_token}",
+                        },
+                    )
+                    if resp.status_code == 404:
+                        errors.append(f"{path}: 404")
+                        continue
+                    resp.raise_for_status()
+                    token = resp.json().get("session_token")
+                    if not token:
+                        errors.append(f"{path}: pas de session_token")
+                        continue
+                    self._session_token = token
+                    self._api_base = api_base
+                    self._client = client
+                    logger.info("GLPI : session API ouverte sur %s", api_base)
+                    return self._client
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"{path}: {exc}")
+            client.close()
+            logger.warning(
+                "GLPI : impossible d'ouvrir la session API (%s) — les images GLPI "
+                "resteront des liens.", " | ".join(errors),
+            )
+            self._failed_init = True
+            return None
 
 
 def _extract_docid(url: str) -> str | None:

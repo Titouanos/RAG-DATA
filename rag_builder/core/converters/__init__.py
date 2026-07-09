@@ -55,6 +55,7 @@ def build_default_registry(
     ocr_enabled: bool = False,
     ocr_languages: str = "fra+eng",
     image_roots: list[Path] | None = None,
+    remote_fetcher=None,
 ) -> ConverterRegistry:
     """Construit le registre par défaut.
 
@@ -76,6 +77,7 @@ def build_default_registry(
         vision_describer=vision_describer,
         vision_cache_dir=vision_cache_dir,
         image_roots=image_roots,
+        remote_fetcher=remote_fetcher,
     )
 
     converters: list[Converter] = [

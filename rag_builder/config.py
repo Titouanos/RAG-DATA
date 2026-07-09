@@ -80,6 +80,14 @@ class Settings(BaseSettings):
     vision_enabled: bool = Field(default=False)
     vision_model: str = Field(default="gemini-2.5-flash-lite")
 
+    # --- GLPI (rapatriement authentifié des captures document.send.php, optionnel) ---
+    # Renseigner les trois valeurs pour que les images GLPI soient téléchargées à
+    # l'ingestion et servies par le RAG (affichage inline garanti).
+    glpi_base_url: str | None = Field(default=None)  # ex. https://glpi-info.saga.com
+    glpi_app_token: str | None = Field(default=None)
+    glpi_user_token: str | None = Field(default=None)
+    glpi_verify_ssl: bool = Field(default=True)  # false si certificat interne auto-signé
+
     # --- OCR (optionnel, activé par collection ; nécessite ocrmypdf + Tesseract) ---
     ocr_languages: str = Field(default="fra+eng")
 

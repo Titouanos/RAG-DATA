@@ -131,6 +131,9 @@ class RagService:
                 embedder.warm_up()
 
     def close(self) -> None:
+        fetcher = getattr(self, "_remote_fetcher", None)
+        if fetcher is not None:
+            fetcher.close()
         self.store.close()
 
     # ------------------------------------------------------------------
@@ -227,6 +230,7 @@ class RagService:
             ocr_enabled=getattr(meta, "ocr_enabled", False),
             ocr_languages=self.settings.ocr_languages,
             image_roots=[self.settings.uploads_dir, self.settings.data_dir],
+            remote_fetcher=self._get_remote_fetcher(),
         )
         src = Path(source)
         report("parsing", 0, 1)
@@ -372,6 +376,24 @@ class RagService:
         yield from provider.stream(system, prompt, max_tokens=4096)
 
     # ------------------------------------------------------------------
+
+    def _get_remote_fetcher(self):
+        """Fetcher GLPI (rapatriement des captures) si configuré, sinon None. Mémoïsé."""
+        if not hasattr(self, "_remote_fetcher"):
+            s = self.settings
+            if s.glpi_base_url and s.glpi_app_token and s.glpi_user_token:
+                from rag_builder.core.converters.glpi_fetch import GlpiImageFetcher
+
+                self._remote_fetcher = GlpiImageFetcher(
+                    s.glpi_base_url,
+                    s.glpi_app_token,
+                    s.glpi_user_token,
+                    verify_ssl=s.glpi_verify_ssl,
+                )
+                logger.info("Rapatriement GLPI activé (%s)", s.glpi_base_url)
+            else:
+                self._remote_fetcher = None
+        return self._remote_fetcher
 
     def _build_vision_describer(self):
         """Construit le VisionDescriber si la vision est activée (sinon None)."""

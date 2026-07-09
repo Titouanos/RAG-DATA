@@ -60,12 +60,16 @@ class HtmlImageRewriter:
         vision_describer=None,
         vision_cache_dir: Path | None = None,
         allowed_roots: list[Path] | None = None,
+        remote_fetcher=None,
     ):
         self.collection = collection
         self.image_store = image_store
         self.vision_describer = vision_describer
         self.vision_cache_dir = vision_cache_dir
         self.allowed_roots = [Path(r).resolve() for r in (allowed_roots or [])]
+        # Rapatriement authentifié des URLs absolues (ex. GLPI) : objet avec
+        # matches(url)->bool et fetch(url)->(bytes|None, ext).
+        self.remote_fetcher = remote_fetcher
 
     # ------------------------------------------------------------------
 
@@ -73,19 +77,9 @@ class HtmlImageRewriter:
         """Retourne le markdown avec les images stockées/retirées. Sans store : strip."""
         count = 0
 
-        def repl(m: re.Match) -> str:
+        def emit_stored(alt: str, img_bytes: bytes, ext: str) -> str:
+            """Stocke l'image et retourne le bloc markdown (description vision si dispo)."""
             nonlocal count
-            alt, src = m.group(1), m.group(2)
-            # URL absolue : on garde la balise — le navigateur interne saura la charger.
-            if src.startswith(("http://", "https://")):
-                return m.group(0)
-            img_bytes, ext = self._load_bytes(src, base_dir)
-            if img_bytes is None:
-                # Injoignable (URL serveur, fichier absent…) : on garde l'alt informatif.
-                clean_alt = sanitize_alt_text(alt)
-                return clean_alt if len(clean_alt) > 3 else ""
-            if count >= _MAX_IMAGES_PER_DOC or self.image_store is None:
-                return sanitize_alt_text(alt)
             count += 1
             stored = self.image_store.save(self.collection, doc_id, img_bytes, extension=ext)
             description = self._describe_with_cache(img_bytes, ext)
@@ -95,6 +89,30 @@ class HtmlImageRewriter:
                 return f"\n\n{build_image_block(description, stored.reference)}\n\n"
             alt_clean = sanitize_alt_text(alt) or "capture"
             return f"![{alt_clean}]({stored.reference})"
+
+        def repl(m: re.Match) -> str:
+            alt, src = m.group(1), m.group(2)
+            if src.startswith(("http://", "https://")):
+                # Rapatriement authentifié (ex. GLPI) si configuré et sous quota.
+                if (
+                    self.remote_fetcher is not None
+                    and self.image_store is not None
+                    and count < _MAX_IMAGES_PER_DOC
+                    and self.remote_fetcher.matches(src)
+                ):
+                    img_bytes, ext = self.remote_fetcher.fetch(src)
+                    if img_bytes is not None and len(img_bytes) >= _MIN_IMAGE_BYTES:
+                        return emit_stored(alt, img_bytes, ext)
+                # Sinon : balise conservée — le navigateur interne saura peut-être la charger.
+                return m.group(0)
+            img_bytes, ext = self._load_bytes(src, base_dir)
+            if img_bytes is None:
+                # Injoignable (chemin serveur relatif, fichier absent…) : alt informatif.
+                clean_alt = sanitize_alt_text(alt)
+                return clean_alt if len(clean_alt) > 3 else ""
+            if count >= _MAX_IMAGES_PER_DOC or self.image_store is None:
+                return sanitize_alt_text(alt)
+            return emit_stored(alt, img_bytes, ext)
 
         return _IMG_RE.sub(repl, markdown)
 

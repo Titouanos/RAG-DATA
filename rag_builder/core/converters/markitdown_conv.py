@@ -56,12 +56,14 @@ class MarkitdownConverter:
         vision_describer=None,
         vision_cache_dir: Path | None = None,
         image_roots: list[Path] | None = None,
+        remote_fetcher=None,
     ):
         self.collection = collection
         self.image_store = image_store
         self.vision_describer = vision_describer
         self.vision_cache_dir = vision_cache_dir
         self.image_roots = image_roots
+        self.remote_fetcher = remote_fetcher
 
     def can_handle(self, source: Path) -> bool:
         return source.suffix.lower() in self.SUPPORTED_EXTS
@@ -111,6 +113,7 @@ class MarkitdownConverter:
                 vision_describer=self.vision_describer,
                 vision_cache_dir=self.vision_cache_dir,
                 allowed_roots=self.image_roots,
+                remote_fetcher=self.remote_fetcher,
             )
             markdown = rewriter.rewrite(markdown, doc_id=doc_id, base_dir=path.parent)
 

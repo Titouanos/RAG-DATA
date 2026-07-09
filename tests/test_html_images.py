@@ -65,6 +65,50 @@ def test_absolute_urls_kept_for_browser(tmp_path):
     assert out == md  # inchangé
 
 
+class _FakeGlpiFetcher:
+    """Fetcher factice : sert _PNG pour les URLs GLPI, sans réseau."""
+
+    def __init__(self, base: str):
+        self.base = base
+        self.calls: list[str] = []
+
+    def matches(self, url: str) -> bool:
+        return url.startswith(self.base) and "document.send.php" in url
+
+    def fetch(self, url: str):
+        self.calls.append(url)
+        return _PNG, ".png"
+
+
+def test_remote_fetcher_stores_glpi_images(tmp_path):
+    """Avec un fetcher configuré, les images GLPI sont rapatriées → rag-image://."""
+    fetcher = _FakeGlpiFetcher("https://glpi-info.saga.com")
+    rw, store = _rewriter(tmp_path, remote_fetcher=fetcher)
+    md = (
+        "Cliquer ![remplacer](https://glpi-info.saga.com/front/document.send.php?docid=1) "
+        "et voir ![externe](https://autre-site.com/img.png)"
+    )
+    out = rw.rewrite(md, doc_id="d", base_dir=tmp_path)
+    assert "rag-image://glpi/d/" in out  # image GLPI rapatriée
+    assert "https://autre-site.com/img.png" in out  # hors périmètre GLPI : conservée
+    assert len(fetcher.calls) == 1
+    ref = out.split("rag-image://")[1].split(")")[0]
+    assert store.resolve(ref) is not None
+
+
+def test_glpi_docid_parse_and_sniff():
+    from rag_builder.core.converters.glpi_fetch import _extract_docid, _sniff_ext
+
+    assert _extract_docid(
+        "https://g/front/document.send.php?docid=32526&itemtype=KnowbaseItem"
+    ) == "32526"
+    assert _extract_docid("https://g/front/document.send.php?itemtype=X") is None
+    assert _extract_docid("https://g/front/document.send.php?docid=abc") is None
+    assert _sniff_ext(b"\x89PNG\r\n\x1a\n rest") == ".png"
+    assert _sniff_ext(b"\xff\xd8\xff\xe0 rest") == ".jpg"
+    assert _sniff_ext(b"pas une image") is None
+
+
 def test_tiny_images_ignored(tmp_path):
     rw, _ = _rewriter(tmp_path)
     b64 = base64.b64encode(b"tinypng").decode()

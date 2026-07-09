@@ -121,7 +121,11 @@ class RagService:
         return cls(settings, registry, store, image_store)
 
     def warm_up(self) -> None:
-        """Précharge l'embedder par défaut (démarrage du worker long-vivant)."""
+        """Précharge embedder et reranker par défaut (démarrage du worker long-vivant).
+
+        Évite de payer le chargement des modèles (~5-10 s chacun) sur la première
+        requête utilisateur.
+        """
         with self._lock:
             kind = self.settings.embedder
             if kind not in self._embedders:
@@ -129,6 +133,15 @@ class RagService:
             embedder = self._embedders[kind]
             if hasattr(embedder, "warm_up"):
                 embedder.warm_up()
+            if self.settings.rerank_enabled:
+                model = self.settings.rerank_model
+                if model not in self._rerankers:
+                    self._rerankers[model] = build_reranker(
+                        model,
+                        cache_dir=self.settings.models_cache_dir,
+                        offline=self.settings.hf_offline,
+                    )
+                self._rerankers[model].warm_up()
 
     def close(self) -> None:
         fetcher = getattr(self, "_remote_fetcher", None)

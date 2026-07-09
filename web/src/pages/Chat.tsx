@@ -240,29 +240,73 @@ function SourceCard({ s, collection }: { s: Source; collection: string }) {
   );
 }
 
-// Rendu léger : remplace les images ![alt](rag-image://… | http(s)://…) par des <img>.
-// Les images internes passent par l'API ; les URLs absolues (ex. serveur GLPI interne)
-// sont chargées par le navigateur et masquées si inaccessibles (non connecté, hors VPN).
+// Image avec repli : si elle ne se charge pas (ex. capture GLPI exigeant une session),
+// on affiche un lien cliquable vers l'original au lieu de laisser un trou.
+function SmartImage({ src, alt, href }: { src: string; alt: string; href: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        title={href}
+        className="text-brand-600 underline"
+      >
+        📷 {alt || "ouvrir la capture"}
+      </a>
+    );
+  }
+  return (
+    <a href={href} target="_blank" rel="noreferrer">
+      <img
+        src={src}
+        alt={alt}
+        className="my-2 max-h-72 rounded border border-slate-200"
+        onError={() => setFailed(true)}
+      />
+    </a>
+  );
+}
+
+// Rendu léger du markdown utile au chat : images liées [![alt](img)](href), images
+// ![alt](rag-image://… | http…) et liens [texte](url). Les images internes passent par
+// l'API ; les URLs absolues (serveur GLPI interne) sont chargées par le navigateur avec
+// repli en lien si inaccessibles.
 function RichText({ text, collection }: { text: string; collection: string }) {
-  const re = /!\[([^\]]*)\]\((rag-image:\/\/[^)\s]+|https?:\/\/[^)\s]+)\)/g;
+  // Chaque URL peut être suivie d'un titre markdown optionnel : (url "titre").
+  const re =
+    /\[!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|!\[([^\]]*)\]\((rag-image:\/\/[^)\s]+|https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)|\[([^\]]*)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g;
+  const resolve = (ref: string) =>
+    ref.startsWith("rag-image://") ? api.imageUrl(collection, ref) : ref;
+
   const parts: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
   let key = 0;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push(<span key={key++}>{text.slice(last, m.index)}</span>);
-    const src = m[2].startsWith("rag-image://") ? api.imageUrl(collection, m[2]) : m[2];
-    parts.push(
-      <img
-        key={key++}
-        src={src}
-        alt={m[1]}
-        className="my-2 max-h-72 rounded border border-slate-200"
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = "none";
-        }}
-      />,
-    );
+    if (m[2] !== undefined) {
+      // [![alt](img)](href) — image cliquable
+      parts.push(<SmartImage key={key++} src={resolve(m[2])} alt={m[1]} href={m[3]} />);
+    } else if (m[5] !== undefined) {
+      // ![alt](src)
+      parts.push(<SmartImage key={key++} src={resolve(m[5])} alt={m[4]} href={resolve(m[5])} />);
+    } else {
+      // [texte](url) — lien cliquable ; texte vide → libellé générique
+      parts.push(
+        <a
+          key={key++}
+          href={m[7]}
+          target="_blank"
+          rel="noreferrer"
+          title={m[7]}
+          className="text-brand-600 underline"
+        >
+          {m[6] || "🔗 ouvrir le lien"}
+        </a>,
+      );
+    }
     last = m.index + m[0].length;
   }
   if (last < text.length) parts.push(<span key={key++}>{text.slice(last)}</span>);

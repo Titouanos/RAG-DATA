@@ -160,7 +160,7 @@ function AssistantMessage({
           <div className="mb-1 text-xs font-semibold uppercase text-slate-400">Sources</div>
           <div className="space-y-1">
             {msg.sources.map((s) => (
-              <SourceCard key={s.n} s={s} />
+              <SourceCard key={s.n} s={s} collection={collection} />
             ))}
           </div>
         </div>
@@ -192,8 +192,9 @@ function AssistantMessage({
   );
 }
 
-function SourceCard({ s }: { s: Source }) {
+function SourceCard({ s, collection }: { s: Source; collection: string }) {
   const [open, setOpen] = useState(false);
+  const images = s.images ?? [];
   return (
     <div className="rounded border border-slate-200">
       <button
@@ -203,11 +204,36 @@ function SourceCard({ s }: { s: Source }) {
         <span className="badge bg-brand-50 text-brand-700">[{s.n}]</span>
         <span className="font-medium text-slate-700">{s.source_name}</span>
         <span className="text-xs text-slate-400">{s.page_or_section}</span>
+        {images.length > 0 && (
+          <span className="badge bg-slate-100 text-slate-600">📷 {images.length}</span>
+        )}
         <span className="ml-auto text-xs text-slate-400">score {s.score.toFixed(3)}</span>
       </button>
       {open && (
-        <div className="whitespace-pre-wrap border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
-          {s.excerpt}
+        <div className="border-t border-slate-100 px-3 py-2">
+          <div className="whitespace-pre-wrap text-xs text-slate-600">{s.excerpt}</div>
+          {images.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {images.map((ref, i) => (
+                <a
+                  key={i}
+                  href={ref.startsWith("rag-image://") ? api.imageUrl(collection, ref) : ref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <img
+                    src={ref.startsWith("rag-image://") ? api.imageUrl(collection, ref) : ref}
+                    alt={`capture ${i + 1}`}
+                    className="max-h-40 rounded border border-slate-200 hover:opacity-80"
+                    onError={(e) => {
+                      const a = (e.target as HTMLImageElement).parentElement;
+                      if (a) a.style.display = "none";
+                    }}
+                  />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

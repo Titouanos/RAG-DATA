@@ -61,6 +61,7 @@ export interface Source {
   doc_id: string;
   chunk_id: string;
   excerpt: string;
+  images: string[]; // refs rag-image:// ou URLs absolues présentes dans l'extrait
 }
 
 export class ApiError extends Error {

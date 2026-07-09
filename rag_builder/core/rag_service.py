@@ -8,6 +8,7 @@ cache par instance de service.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -42,6 +43,10 @@ class IngestResult:
     scanned_suspect: bool = False
 
 
+# Balises image dans un chunk : internes (rag-image://) ou URL absolues (serveur interne).
+_CHUNK_IMAGE_RE = re.compile(r"!\[[^\]]*\]\((rag-image://[^)\s]+|https?://[^)\s]+)\)")
+
+
 @dataclass
 class QueryResult:
     """Résultat d'une requête de retrieval (avant génération)."""
@@ -51,9 +56,14 @@ class QueryResult:
     timings: QueryTimings = field(default_factory=QueryTimings)
 
     def sources(self) -> list[dict]:
-        """Liste des sources citables [n] mappées aux chunks (métadonnées structurées)."""
+        """Liste des sources citables [n] mappées aux chunks (métadonnées structurées).
+
+        Chaque source expose aussi les références d'images de son extrait (`images`) :
+        l'UI les affiche de façon déterministe, sans dépendre de leur recopie par le LLM.
+        """
         out = []
         for i, c in enumerate(self.chunks, 1):
+            images = _CHUNK_IMAGE_RE.findall(c.text)[:8]
             out.append(
                 {
                     "n": i,
@@ -63,6 +73,7 @@ class QueryResult:
                     "doc_id": c.doc_id,
                     "chunk_id": c.chunk_id,
                     "excerpt": c.text[:300],
+                    "images": images,
                 }
             )
         return out
